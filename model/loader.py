@@ -1,4 +1,3 @@
-import numpy as np
 import pandas as pd
 import torch
 import pandas.api.types as ptypes
@@ -7,17 +6,17 @@ from torch.utils.data import Dataset, DataLoader
 from pytorch_lightning import LightningDataModule
 
 
-
 class CensusDataset(Dataset):
-    def __init__(self, data: List[torch.Tensor]):
+    def __init__(self, data: torch.Tensor):
         self.data = data
+        print(data.shape)
 
     def __getitem__(self, index):
-        return (col[index] for col in self.data)
+        return self.data[index]
 
     def __len__(self):
-        return len(self.data[0])
-    
+        return len(self.data)
+
 
 class DataModule(LightningDataModule):
     def __init__(
@@ -28,7 +27,7 @@ class DataModule(LightningDataModule):
         train_batch_size: int = 1024,
         val_batch_size: int = 1024,
         test_batch_size: int = 1024,
-        num_workers: int = 0,
+        num_workers: int = 4,
         pin_memory: bool = False,
         **kwargs,
     ):
@@ -58,10 +57,8 @@ class DataModule(LightningDataModule):
 
     def setup(self, stage: Optional[str] = None) -> None:
         if self.test_split is None:
-            (self.train_dataset, self.val_dataset) = (
-                torch.utils.data.random_split(
-                    self.dataset, [1 - self.val_split, self.val_split]
-                )
+            (self.train_dataset, self.val_dataset) = torch.utils.data.random_split(
+                self.dataset, [1 - self.val_split, self.val_split]
             )
             self.test_dataset = self.val_dataset
         else:
@@ -105,20 +102,20 @@ class DataModule(LightningDataModule):
             pin_memory=self.pin_memory,
             persistent_workers=True,
         )
-    
 
-class Census:
+
+class CensusEncoder:
     def __init__(
-            self,
-            data: pd.DataFrame,
-            cols: Optional[List[str]] = None,
-            data_types: Optional[Dict[str, str]] = None,
-            auto: bool = True,
-            ):
+        self,
+        data: pd.DataFrame,
+        cols: Optional[List[str]] = None,
+        data_types: Optional[Dict[str, str]] = None,
+        auto: bool = True,
+    ):
         self.cols = cols
         if cols is not None:
             data = data[cols]
-        if auto:    
+        if auto:
             self.data_types = self._build_dtypes(data, data_types)
         else:
             self.data_types = data_types
@@ -126,7 +123,7 @@ class Census:
         self._validate_dtypes(data)
         self.config = self._configure(data)
 
-    def encode(self, data: pd.DataFrame):
+    def encode(self, data: pd.DataFrame, **kwargs: dict) -> DataModule:
         encoded = []
         if self.cols is not None:
             data = data[self.cols]
@@ -147,23 +144,25 @@ class Census:
                 mini, maxi = cnfg["encoding"]
                 numeric = torch.tensor(column.values).unsqueeze(-1)
                 numeric -= mini
-                numeric /= (maxi - mini)
+                numeric /= maxi - mini
                 encoded.append(numeric.float())
 
         if not encoded:
             raise UserWarning("No encodings found.")
 
-        return encoded  # todo: weights
-    
+        encoded = torch.stack(encoded, dim=-1)
+        dataset = CensusDataset(encoded)
+        return DataModule(dataset=dataset, **kwargs)  # todo: weights
+
     def names(self) -> list:
         return [cnfg["name"] for cnfg in self.config]
-    
+
     def encodings(self) -> list:
         return [(cnfg["type"], cnfg["encoding"]) for cnfg in self.config]
-    
+
     def dtypes(self) -> list:
         return [cnfg["dtype"] for cnfg in self.config]
-    
+
     def len(self) -> int:
         return len(self.config)
 
@@ -181,24 +180,29 @@ class Census:
                 elif ptypes.is_numeric_dtype(data[c]):
                     data_types[c] = "numeric"
                 else:
-                    raise UserWarning(f"Unrecognised dtype '{data[c].dtype}' at column '{c}'.")
+                    raise UserWarning(
+                        f"Unrecognised dtype '{data[c].dtype}' at column '{c}'."
+                    )
         return data_types
-                
+
     def _validate_dtypes(self, data):
         # check for bad columns (ie too many categories)
         non_numerics = [k for k, v in self.data_types.items() if not v == "numeric"]
         n = len(data)
         for c in non_numerics:
             if len(set(data[c])) == n:
-                raise UserWarning(f"Categorical column '{c}' appears to have non-categorical data (too many categories).")
+                raise UserWarning(
+                    f"Categorical column '{c}' appears to have non-categorical data (too many categories)."
+                )
 
         # check numeric and ordinal
         numerics = [k for k, v in self.data_types.items() if v == "numeric"]
         for c in numerics:
             if not ptypes.is_numeric_dtype(data[c]):
-                raise UserWarning(f"Numeric column '{c} does not appear to have numeric type.")
+                raise UserWarning(
+                    f"Numeric column '{c} does not appear to have numeric type."
+                )
 
-        
     def _configure(self, data: pd.DataFrame) -> dict:
         config = []
         for i, (c, v) in enumerate(self.data_types.items()):
@@ -206,27 +210,29 @@ class Census:
                 raise UserWarning(f"Data '{c}' not found in columns.")
             if v == "categorical":
                 encodings = tokenize(data[c])
-                config.append({
-                    "name": c,
-                    "type": "categorical",
-                    "encoding": encodings,
-                    "dtype": data[c].dtype,
-                })
+                config.append(
+                    {
+                        "name": c,
+                        "type": "categorical",
+                        "encoding": encodings,
+                        "dtype": data[c].dtype,
+                    }
+                )
             elif v == "numeric":
                 mini = data[c].min()
                 maxi = data[c].max()
-                config.append({
-                    "name": c,
-                    "type": "numeric",
-                    "encoding": (mini, maxi),
-                    "dtype": data[c].dtype,
-                })
-            else:
-                raise UserWarning(
-                    f"Unrecognised encoding in configuration: {v}"
+                config.append(
+                    {
+                        "name": c,
+                        "type": "numeric",
+                        "encoding": (mini, maxi),
+                        "dtype": data[c].dtype,
+                    }
                 )
+            else:
+                raise UserWarning(f"Unrecognised encoding in configuration: {v}")
         return config
-    
+
 
 def tokenize(data: pd.Series, encodings: Optional[dict] = None) -> dict:
     nominals = pd.Categorical(data)

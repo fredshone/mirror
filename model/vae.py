@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import List
 import torch
 from torch import nn, Tensor
 from pytorch_lightning import LightningModule
@@ -35,12 +35,13 @@ class VAE(LightningModule):
         target=None,
         **kwargs,
     ) -> List[Tensor]:
+        print(x.shape)
         mu, log_var = self.encode(x)
         z = self.reparameterize(mu, log_var)
         log_probs_x = self.decode(z)
         return [log_probs_x, mu, log_var, z]
 
-    def encode(self, input: Tensor, conditionals: Optional[Tensor]) -> list[Tensor]:
+    def encode(self, input: Tensor) -> list[Tensor]:
         return self.encoder(input)
 
     def decode(self, z: Tensor, **kwargs) -> List[Tensor]:
@@ -51,7 +52,7 @@ class VAE(LightningModule):
         log_probs: List[Tensor],
         mu: Tensor,
         log_var: Tensor,
-        targets: List[Tensor],
+        targets: Tensor,
         **kwargs,
     ) -> dict:
         verbose_metrics = {}
@@ -59,11 +60,12 @@ class VAE(LightningModule):
         mses = []
         nlls = []
 
-        assert len(self.names) == len(log_probs) == len(targets)
+        assert len(self.names) == len(log_probs) == len(targets[0])
 
-        for name, (etype, _), lprobs, target in zip(
-            self.names, self.encodings, log_probs, targets
+        for i, (name, (etype, _), lprobs) in enumerate(
+            zip(self.names, self.encodings, log_probs)
         ):
+            target = targets[:, i]
             if etype == "numeric":
                 loss = nn.functional.mse_loss(lprobs, target)
                 recons.append(loss)
@@ -124,7 +126,7 @@ class VAE(LightningModule):
             log_probs=log_probs,
             mu=mu,
             log_var=log_var,
-            target=batch,
+            targets=batch,
         )
         self.log_dict(
             {key: val.item() for key, val in train_losses.items()}, sync_dist=True
@@ -137,7 +139,7 @@ class VAE(LightningModule):
             log_probs=log_probs,
             mu=mu,
             log_var=log_var,
-            target=batch,
+            targets=batch,
         )
 
         self.log_dict(

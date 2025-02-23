@@ -2,7 +2,7 @@ from typing import Tuple
 from torch import nn, stack, Tensor
 
 
-class LinearEncoder(nn.Module):
+class Encoder(nn.Module):
     def __init__(self, encodings: dict, embed_size, hidden_n, hidden_size, latent_size):
         super().__init__()
         embeds = []
@@ -10,7 +10,6 @@ class LinearEncoder(nn.Module):
             if type == "numeric":
                 embeds.append(NumericEmbed(embed_size))
             if type == "categorical":
-
                 embeds.append(nn.Embedding(len(encoding), embed_size))
         self.embeds = nn.ModuleList(embeds)
         hidden = [nn.Linear(embed_size, hidden_size), nn.ReLU()]
@@ -18,22 +17,24 @@ class LinearEncoder(nn.Module):
             hidden.extend(
                 [
                     nn.Linear(hidden_size, hidden_size),
-                    nn.ReLU,
+                    nn.ReLU(),
                 ]
             )
-        self.hidden = nn.Sequential(hidden)
+        self.hidden = nn.Sequential(*hidden)
 
         self.fc_mu = nn.Linear(hidden_size, latent_size)
         self.fc_var = nn.Linear(hidden_size, latent_size)
 
     def forward(self, xs: Tuple[Tensor]):
-        assert len(xs) == len(self.embeds)
-        x = stack([embed(x) for embed, x in zip(self.embeds, xs)], dim=-1).sum(dim=-1)
-        x = self.sequential(x)
+        assert len(xs[0]) == len(self.embeds)
+        x = stack([embed(xs[:, i]) for i, embed in enumerate(self.embeds)], dim=-1).sum(
+            dim=-1
+        )
+        x = self.hidden(x)
         return self.fc_mu(x), self.fc_var(x)
 
 
-class LinearDecoder(nn.Module):
+class Decoder(nn.Module):
     def __init__(self, encodings: dict, embed_size, hidden_n, hidden_size, latent_size):
         super().__init__()
 
@@ -46,7 +47,7 @@ class LinearDecoder(nn.Module):
                 ]
             )
         hidden.append(nn.Linear(hidden_size, embed_size))
-        self.hidden = nn.Sequential(hidden)
+        self.hidden = nn.Sequential(*hidden)
 
         self.embeds = []
         for type, encoding in encodings:
