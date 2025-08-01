@@ -1,6 +1,6 @@
 matplotlib
 numpy
 pandas
-pytorch
+torch
 pytorch-lightning
 torchvision

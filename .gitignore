@@ -1,4 +1,5 @@
 ss
+data
 
 # OS-specific
 .DS_Store
@@ -21,6 +22,8 @@ build/
 dist/
 .cruft.json
 tmp/
+*.lock
+.python-version
 
 # Virtual environment
 venv/

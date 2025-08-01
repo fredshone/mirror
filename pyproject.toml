@@ -1,3 +1,46 @@
+[project]
+name = "mirror"
+description = "population generation using variation auto-encoders"
+readme = "README.md"
+requires-python = ">=3.12"
+classifiers = [
+        "Development Status :: 2 - Pre-Alpha",
+        "Intended Audience :: Developers",
+        "License :: OSI Approved :: MIT License",
+        "Natural Language :: English",
+        "Programming Language :: Python :: 3",
+    ]
+
+authors = [
+    { name = "Fred Shone", email = "26383933+fredshone@users.noreply.github.com" },
+]
+keywords = ["synthetic census", "synthetic population", "generation", "vae"]
+license = { text = "MIT" }
+dynamic = ["dependencies", "optional-dependencies", "version"]
+
+[project.scripts]
+mirror="mirror.cli:cli"
+
+[project.urls]
+repository = "https://github.com/fredshone/mirror"
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements/base.txt"] }
+version = { attr = "mirror.__version__" }
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+torchvision = [
+  { index = "pytorch-cu128", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
+]
+
 [tool.pytest.ini_options]
 minversion = "6.0"
 addopts = "-rav --strict-markers -n2 --nbmake --nbmake-kernel=mirror --cov --cov-report=xml --cov-config=pyproject.toml -m 'not high_mem' -p no:memray"
@@ -73,38 +116,9 @@ mirror = []
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
-[project]
-classifiers = [
-        "Development Status :: 2 - Pre-Alpha",
-        "Intended Audience :: Developers",
-        "License :: OSI Approved :: MIT License",
-        "Natural Language :: English",
-        "Programming Language :: Python :: 3",
-    ]
 
-name = "mirror"
-authors = [
-    { name = "Fred Shone", email = "26383933+fredshone@users.noreply.github.com" },
-]
-maintainers = []
-description = "population generation using variation auto-encoders"
-readme = "README.md"
-requires-python = ">=3.13"
-keywords = ["synthetic census", "synthetic population", "generation", "vae", "variational autoencoder"]
-license = { text = "MIT" }
-dynamic = ["dependencies", "optional-dependencies", "version"]
-
-[tool.setuptools.dynamic]
-dependencies = { file = ["requirements/base.txt"] }
-version = { attr = "mirror.__version__" }
-
-[project.scripts]
-mirror="mirror.cli:cli"
 
 [tool.setuptools.dynamic.optional-dependencies]
 dev = { file = ["requirements/dev.txt"] }
 
-[project.urls]
-repository = "https://github.com/fredshone/mirror"
-documentation = "https://fredshone.github.io/mirror"
-changelog = "https://github.com/fredshone/mirror/blob/main/CHANGELOG.md"
+
