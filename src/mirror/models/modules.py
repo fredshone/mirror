@@ -1,64 +1,74 @@
-from typing import Tuple
-from torch import nn, stack, Tensor
+from torch import Tensor, nn, stack
 
 
 class Encoder(nn.Module):
-    def __init__(self, encodings: dict, embed_size, hidden_n, hidden_size, latent_size):
+    def __init__(
+        self,
+        encoder_types: list,
+        encoder_sizes: list,
+        embed_size,
+        hidden_n,
+        hidden_size,
+        latent_size,
+    ):
         super().__init__()
+        self.encoder_types = encoder_types
         embeds = []
-        for type, encoding in encodings:
-            if type == "numeric":
+        for type, size in zip(encoder_types, encoder_sizes):
+            if type == "continuous":
                 embeds.append(NumericEmbed(embed_size))
             if type == "categorical":
-                embeds.append(nn.Embedding(len(encoding), embed_size))
+                embeds.append(nn.Embedding(size, embed_size))
         self.embeds = nn.ModuleList(embeds)
         hidden = [nn.Linear(embed_size, hidden_size), nn.ReLU()]
         for _ in range(hidden_n - 1):
-            hidden.extend(
-                [
-                    nn.Linear(hidden_size, hidden_size),
-                    nn.ReLU(),
-                ]
-            )
+            hidden.extend([nn.Linear(hidden_size, hidden_size), nn.ReLU()])
         self.hidden = nn.Sequential(*hidden)
 
         self.fc_mu = nn.Linear(hidden_size, latent_size)
         self.fc_var = nn.Linear(hidden_size, latent_size)
 
-    def forward(self, xs: Tuple[Tensor]):
-        assert len(xs[0]) == len(self.embeds)
-        x = stack([embed(xs[:, i]) for i, embed in enumerate(self.embeds)], dim=-1).sum(
-            dim=-1
-        )
+    def forward(self, x: Tensor):
+        xs = []
+        for i, (type, embed) in enumerate(zip(self.encoder_types, self.embeds)):
+            col = x[:, i]
+            if type == "categorical":
+                col = col.int()
+            xs.append(embed(col))
+        # consider splitting categorical and continuous in future
+        x = stack(xs, dim=-1).sum(dim=-1)  # Add all embeddings together
         x = self.hidden(x)
         return self.fc_mu(x), self.fc_var(x)
 
 
 class Decoder(nn.Module):
-    def __init__(self, encodings: dict, embed_size, hidden_n, hidden_size, latent_size):
+    def __init__(
+        self,
+        encoder_types: list,
+        encoder_sizes: list,
+        embed_size,
+        hidden_n,
+        hidden_size,
+        latent_size,
+    ):
         super().__init__()
 
         hidden = [nn.Linear(latent_size, hidden_size), nn.ReLU()]
         for _ in range(hidden_n - 1):
-            hidden.extend(
-                [
-                    nn.Linear(hidden_size, hidden_size),
-                    nn.ReLU(),
-                ]
-            )
+            hidden.extend([nn.Linear(hidden_size, hidden_size), nn.ReLU()])
         hidden.append(nn.Linear(hidden_size, embed_size))
         self.hidden = nn.Sequential(*hidden)
 
         self.embeds = []
-        for type, encoding in encodings:
-            if type == "numeric":
+        for type, size in zip(encoder_types, encoder_sizes):
+            if type == "continuous":
                 self.embeds.append(
                     nn.Sequential(nn.Linear(embed_size, 1), nn.Sigmoid())
                 )
             if type == "categorical":
                 self.embeds.append(
                     nn.Sequential(
-                        nn.Linear(embed_size, len(encoding)), nn.Softmax(dim=-1)
+                        nn.Linear(embed_size, size), nn.LogSoftmax(dim=-1)
                     )
                 )
 

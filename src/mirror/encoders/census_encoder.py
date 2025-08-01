@@ -1,107 +1,23 @@
+from typing import Dict, List, Optional
+
 import pandas as pd
-import torch
 import pandas.api.types as ptypes
-from typing import Optional, List, Dict, Union
-from torch.utils.data import Dataset, DataLoader
-from pytorch_lightning import LightningDataModule
+import torch
+from torch.utils.data import Dataset
 
 
 class CensusDataset(Dataset):
     def __init__(self, data: torch.Tensor):
         self.data = data
-        print(data.shape)
+
+    def __repr__(self):
+        return f"{super().__repr__()}: {self.data.shape}"
 
     def __getitem__(self, index):
         return self.data[index]
 
     def __len__(self):
         return len(self.data)
-
-
-class DataModule(LightningDataModule):
-    def __init__(
-        self,
-        dataset: CensusDataset,
-        val_split: float = 0.1,
-        test_split: Optional[float] = None,
-        train_batch_size: int = 1024,
-        val_batch_size: int = 1024,
-        test_batch_size: int = 1024,
-        num_workers: int = 4,
-        pin_memory: bool = False,
-        **kwargs,
-    ):
-        """Torch DataModule.
-
-        Args:
-            data (Dataset): Data
-            val_split (float, optional): _description_. Defaults to None.
-            test_split (Optional[float], optional): _description_. Defaults to 0.1.
-            train_batch_size (int, optional): _description_. Defaults to 1024.
-            val_batch_size (int, optional): _description_. Defaults to 1024.
-            test_batch_size (int, optional): _description_. Defaults to 1024.
-            num_workers (int, optional): _description_. Defaults to 0.
-            pin_memory (bool, optional): _description_. Defaults to False.
-        """
-        super().__init__()
-
-        self.dataset = dataset
-        self.val_split = val_split
-        self.test_split = test_split
-        self.train_batch_size = train_batch_size
-        self.val_batch_size = val_batch_size
-        self.test_batch_size = test_batch_size
-        self.num_workers = num_workers
-        self.pin_memory = pin_memory
-        self.mapping = None
-
-    def setup(self, stage: Optional[str] = None) -> None:
-        if self.test_split is None:
-            (self.train_dataset, self.val_dataset) = torch.utils.data.random_split(
-                self.dataset, [1 - self.val_split, self.val_split]
-            )
-            self.test_dataset = self.val_dataset
-        else:
-            (self.train_dataset, self.val_dataset, self.test_dataset) = (
-                torch.utils.data.random_split(
-                    self.dataset,
-                    [
-                        1 - self.val_split - self.test_split,
-                        self.val_split,
-                        self.test_split,
-                    ],
-                )
-            )
-
-    def train_dataloader(self) -> DataLoader:
-        return DataLoader(
-            self.train_dataset,
-            batch_size=self.train_batch_size,
-            num_workers=self.num_workers,
-            shuffle=True,
-            pin_memory=self.pin_memory,
-            persistent_workers=True,
-        )
-
-    def val_dataloader(self) -> Union[DataLoader, list[DataLoader]]:
-        return DataLoader(
-            self.val_dataset,
-            batch_size=self.val_batch_size,
-            num_workers=self.num_workers,
-            shuffle=False,
-            pin_memory=self.pin_memory,
-            persistent_workers=True,
-        )
-
-    def test_dataloader(self) -> Union[DataLoader, list[DataLoader]]:
-        return DataLoader(
-            self.test_dataset,
-            batch_size=self.test_batch_size,
-            num_workers=self.num_workers,
-            shuffle=False,
-            pin_memory=self.pin_memory,
-            persistent_workers=True,
-        )
 
 
 class CensusEncoder:
@@ -111,7 +27,9 @@ class CensusEncoder:
         cols: Optional[List[str]] = None,
         data_types: Optional[Dict[str, str]] = None,
         auto: bool = True,
+        verbose: bool = False,
     ):
+        self.verbose = verbose
         self.cols = cols
         if cols is not None:
             data = data[cols]
@@ -122,8 +40,14 @@ class CensusEncoder:
 
         self._validate_dtypes(data)
         self.config = self._configure(data)
+        if self.verbose:
+            print(f"{self} initiated census encoder:")
+            for name, (etype, encoder), dtype in zip(
+                self.names(), self.encodings(), self.dtypes()
+            ):
+                print(f"\t>{name}: {etype} {dtype}")
 
-    def encode(self, data: pd.DataFrame, **kwargs: dict) -> DataModule:
+    def encode(self, data: pd.DataFrame, **kwargs: dict) -> CensusDataset:
         encoded = []
         if self.cols is not None:
             data = data[self.cols]
@@ -138,7 +62,7 @@ class CensusEncoder:
             if encoder_type == "categorical":
                 categories = cnfg["encoding"]
                 nominals = pd.Categorical(column, categories=categories.keys())
-                encoded.append(torch.tensor(nominals.codes).int())
+                encoded.append(torch.tensor(nominals.codes).long())
 
             elif encoder_type == "numeric":
                 mini, maxi = cnfg["encoding"]
@@ -152,7 +76,9 @@ class CensusEncoder:
 
         encoded = torch.stack(encoded, dim=-1)
         dataset = CensusDataset(encoded)
-        return DataModule(dataset=dataset, **kwargs)  # todo: weights
+        if self.verbose:
+            print(f"{self} encoded -> {dataset}")
+        return dataset  # todo: weights
 
     def names(self) -> list:
         return [cnfg["name"] for cnfg in self.config]
@@ -166,7 +92,9 @@ class CensusEncoder:
     def len(self) -> int:
         return len(self.config)
 
-    def _build_dtypes(self, data: pd.DataFrame, data_types: dict) -> Dict[str, str]:
+    def _build_dtypes(
+        self, data: pd.DataFrame, data_types: dict
+    ) -> Dict[str, str]:
         if data_types is None:
             data_types = {}
         for c in data.columns:
@@ -187,7 +115,9 @@ class CensusEncoder:
 
     def _validate_dtypes(self, data):
         # check for bad columns (ie too many categories)
-        non_numerics = [k for k, v in self.data_types.items() if not v == "numeric"]
+        non_numerics = [
+            k for k, v in self.data_types.items() if not v == "numeric"
+        ]
         n = len(data)
         for c in non_numerics:
             if len(set(data[c])) == n:
@@ -230,7 +160,9 @@ class CensusEncoder:
                     }
                 )
             else:
-                raise UserWarning(f"Unrecognised encoding in configuration: {v}")
+                raise UserWarning(
+                    f"Unrecognised encoding in configuration: {v}"
+                )
         return config
 
 
