@@ -16,7 +16,29 @@ authors = [
 ]
 keywords = ["synthetic census", "synthetic population", "generation", "vae"]
 license = { text = "MIT" }
-dynamic = ["dependencies", "optional-dependencies", "version"]
+dynamic = ["version"]
+dependencies = [
+  "matplotlib",
+  "numpy",
+  "pandas",
+  "pytorch-lightning",
+  "torchvision",
+  "jupyter",
+  "jupyter_contrib_nbextensions",
+  "mike >= 2, < 3",
+  "mkdocs < 1.6",
+  "mkdocs-material >= 9.4, < 10",
+  "mkdocs-click < 0.7",
+  "mkdocs-jupyter < 0.24.7",
+  "mkdocstrings-python < 2",
+  "nbmake >= 1.5.1, < 2",
+  "pre-commit < 4",
+  "pytest",
+  "pytest-cov",
+  "pytest-mock",
+  "pytest-timeout",
+  "pytest-xdist"
+]
 
 [project.scripts]
 mirror="mirror.cli:cli"
@@ -25,8 +47,10 @@ mirror="mirror.cli:cli"
 repository = "https://github.com/fredshone/mirror"
 
 [tool.setuptools.dynamic]
-dependencies = { file = ["requirements/base.txt"] }
 version = { attr = "mirror.__version__" }
+
+[tool.uv]
+package = true
 
 [[tool.uv.index]]
 name = "pytorch-cu128"
@@ -111,14 +135,7 @@ include = ["mirror*"]
 # E.g. "fixtures/**/*"
 mirror = []
 
-
 [build-system]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
-
-
-
-[tool.setuptools.dynamic.optional-dependencies]
-dev = { file = ["requirements/dev.txt"] }
-
 
