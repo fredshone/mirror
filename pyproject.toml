@@ -37,7 +37,8 @@ dependencies = [
   "pytest-cov",
   "pytest-mock",
   "pytest-timeout",
-  "pytest-xdist"
+  "pytest-xdist",
+  "wandb>=0.21.1",
 ]
 
 [project.scripts]
@@ -101,11 +102,11 @@ lint.ignore = [
     "D1",   # Ignore missing docstrings in public functions/modules. There are just too many of them missing...
 ]
 
-# Exclude a variety of commonly ignored directories.
-exclude = [".*", "__pypackages__", "build", "dist", "venv", "reports/"]
-
 # Allow unused variables when underscore-prefixed.
 lint.dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+# Exclude a variety of commonly ignored directories.
+exclude = [".*", "__pypackages__", "build", "dist", "venv", "reports/"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

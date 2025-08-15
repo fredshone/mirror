@@ -104,6 +104,7 @@ class TableEncoder:
             raise UserWarning("No encodings found.")
 
         encoded = stack(encoded, dim=-1).float()
+        print(encoded.min(), encoded.max())
         dataset = CensusDataset(encoded)
         if self.verbose:
             print(f"{self} encoded -> {dataset}")

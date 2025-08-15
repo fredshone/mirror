@@ -1,16 +1,14 @@
-from typing import Optional, Union
+from typing import Optional
 
 import torch
 from pytorch_lightning import LightningDataModule
-from torch.utils.data import DataLoader
-
-from mirror.encoders.census_encoder import CensusDataset
+from torch.utils.data import DataLoader, Dataset
 
 
 class DataModule(LightningDataModule):
     def __init__(
         self,
-        dataset: CensusDataset,
+        dataset: Dataset,
         val_split: float = 0.1,
         test_split: Optional[float] = None,
         train_batch_size: int = 1024,
@@ -74,7 +72,7 @@ class DataModule(LightningDataModule):
             persistent_workers=True,
         )
 
-    def val_dataloader(self) -> Union[DataLoader, list[DataLoader]]:
+    def val_dataloader(self) -> DataLoader:
         return DataLoader(
             self.val_dataset,
             batch_size=self.val_batch_size,
@@ -84,7 +82,7 @@ class DataModule(LightningDataModule):
             persistent_workers=True,
         )
 
-    def test_dataloader(self) -> Union[DataLoader, list[DataLoader]]:
+    def test_dataloader(self) -> DataLoader:
         return DataLoader(
             self.test_dataset,
             batch_size=self.test_batch_size,

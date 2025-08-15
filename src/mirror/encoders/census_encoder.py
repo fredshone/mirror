@@ -6,8 +6,13 @@ import torch
 from torch.utils.data import Dataset
 
 
-class CensusDataset(Dataset):
+class XDataset(Dataset):
     def __init__(self, data: torch.Tensor):
+        """Dataset for the input features.
+
+        Args:
+            data (torch.Tensor): The input features.
+        """
         self.data = data
 
     def __repr__(self):
@@ -20,7 +25,36 @@ class CensusDataset(Dataset):
         return len(self.data)
 
 
-class CensusEncoder:
+class YXDataset(Dataset):
+    def __init__(self, x: Dataset, y: Dataset):
+        """Dataset for the input features and target labels.
+
+        Args:
+            x (Dataset): The input features.
+            y (Dataset): The target labels.
+
+        Raises:
+            TypeError: If y or x is not a Dataset.
+            ValueError: If y and x are not of the same length.
+        """
+        if not isinstance(y, Dataset) or not isinstance(x, Dataset):
+            raise TypeError("y and x must be instances of Dataset")
+        if not len(y) == len(x):
+            raise ValueError("y and x must be of the same length")
+        self.y = y
+        self.x = x
+
+    def __repr__(self):
+        return f"{super().__repr__()}: {self.x.data.shape}, {self.y.data.shape}"
+
+    def __getitem__(self, index):
+        return self.x[index], self.y[index]
+
+    def __len__(self):
+        return len(self.x)
+
+
+class TableEncoder:
     def __init__(
         self,
         data: pd.DataFrame,
@@ -29,11 +63,21 @@ class CensusEncoder:
         auto: bool = True,
         verbose: bool = False,
     ):
+        """Table encoder for tabular data.
+
+        Args:
+            data (pd.DataFrame): The input data.
+            cols (Optional[List[str]], optional): The columns to encode. Defaults to None.
+            data_types (Optional[Dict[str, str]], optional): The data types for each column. Defaults to None.
+            auto (bool, optional): Whether to automatically infer data types. Defaults to True.
+            verbose (bool, optional): Whether to print verbose output. Defaults to False.
+        """
         self.verbose = verbose
         self.cols = cols
         if cols is not None:
             data = data[cols]
         if auto:
+            # infer data types
             self.data_types = self._build_dtypes(data, data_types)
         else:
             self.data_types = data_types
@@ -47,7 +91,7 @@ class CensusEncoder:
             ):
                 print(f"\t>{name}: {etype} {dtype}")
 
-    def encode(self, data: pd.DataFrame, **kwargs: dict) -> CensusDataset:
+    def encode(self, data: pd.DataFrame, **kwargs: dict) -> XDataset:
         encoded = []
         if self.cols is not None:
             data = data[self.cols]
@@ -75,13 +119,19 @@ class CensusEncoder:
             raise UserWarning("No encodings found.")
 
         encoded = torch.stack(encoded, dim=-1)
-        dataset = CensusDataset(encoded)
+        dataset = XDataset(encoded)
         if self.verbose:
             print(f"{self} encoded -> {dataset}")
         return dataset  # todo: weights
 
     def names(self) -> list:
         return [cnfg["name"] for cnfg in self.config]
+
+    def types(self) -> list:
+        return [cnfg["type"] for cnfg in self.config]
+
+    def sizes(self) -> list:
+        return [cnfg["size"] for cnfg in self.config]
 
     def encodings(self) -> list:
         return [(cnfg["type"], cnfg["encoding"]) for cnfg in self.config]
@@ -93,8 +143,21 @@ class CensusEncoder:
         return len(self.config)
 
     def _build_dtypes(
-        self, data: pd.DataFrame, data_types: dict
+        self, data: pd.DataFrame, data_types: Optional[dict] = None
     ) -> Dict[str, str]:
+        """
+        Build data types for the encoder.
+
+        Args:
+            data (pd.DataFrame): The input data.
+            data_types (Optional[dict], optional): Predefined data types. Defaults to None.
+
+        Raises:
+            UserWarning: Unrecognized data type found.
+
+        Returns:
+            Dict[str, str]: A dictionary mapping column names to their data types.
+        """
         if data_types is None:
             data_types = {}
         for c in data.columns:
@@ -114,6 +177,15 @@ class CensusEncoder:
         return data_types
 
     def _validate_dtypes(self, data):
+        """Validate the data types of the input DataFrame.
+
+        Args:
+            data (pd.DataFrame): The input data.
+
+        Raises:
+            UserWarning: Too many categories found.
+            UserWarning: Invalid data type found.
+        """
         # check for bad columns (ie too many categories)
         non_numerics = [
             k for k, v in self.data_types.items() if not v == "numeric"
@@ -134,6 +206,18 @@ class CensusEncoder:
                 )
 
     def _configure(self, data: pd.DataFrame) -> dict:
+        """Configure the encoder.
+
+        Args:
+            data (pd.DataFrame): The input data.
+
+        Raises:
+            UserWarning: Cannot find column.
+            UserWarning: Invalid encoding found.
+
+        Returns:
+            dict: A dictionary mapping column names to their configurations.
+        """
         config = []
         for i, (c, v) in enumerate(self.data_types.items()):
             if c not in data.columns:
@@ -144,6 +228,7 @@ class CensusEncoder:
                     {
                         "name": c,
                         "type": "categorical",
+                        "size": len(encodings),
                         "encoding": encodings,
                         "dtype": data[c].dtype,
                     }
@@ -155,6 +240,7 @@ class CensusEncoder:
                     {
                         "name": c,
                         "type": "numeric",
+                        "size": 1,
                         "encoding": (mini, maxi),
                         "dtype": data[c].dtype,
                     }

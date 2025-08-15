@@ -8,7 +8,9 @@ from torch import Tensor, nn, optim
 class CVAE(LightningModule):
     def __init__(
         self,
-        conditional_block: nn.Module,
+        embedding_names: list,
+        embedding_types: list,
+        labels_encoder_block: nn.Module,
         encoder_block: nn.Module,
         decoder_block: nn.Module,
         beta: float,
@@ -16,7 +18,16 @@ class CVAE(LightningModule):
         verbose: bool = False,
     ):
         super().__init__()
-        self.conditional_block = conditional_block
+        if not (embedding_names and embedding_types):
+            raise ValueError("Embedding names and types must be provided")
+        if len(embedding_names) != len(embedding_types):
+            raise ValueError(
+                "Embedding names and types must have the same length"
+            )
+        self.embedding_names = embedding_names
+        self.embedding_types = embedding_types
+
+        self.labels_encoder_block = labels_encoder_block
         self.encoder_block = encoder_block
         self.decoder_block = decoder_block
 
@@ -24,24 +35,24 @@ class CVAE(LightningModule):
         self.beta = beta
         self.lr = lr
         self.verbose = verbose
-        self.save_hyperparameters(ignore=["encoder", "decoder"])
+        self.save_hyperparameters(
+            ignore=["labels_encoder_block", "encoder_block", "decoder_block"]
+        )
 
     def forward(
         self, x: Tensor, y: Tensor, target=None, **kwargs
     ) -> List[Tensor]:
-        h_y = self.conditional_block(y)
+        h_y = self.labels_encoder_block(y)
         mu, log_var = self.encode(x, h_y)
         z = self.reparameterize(mu, log_var)
         log_probs_x = self.decode(z, h_y)
         return [log_probs_x, mu, log_var, z]
 
-    def encode(self, input: Tensor, h_conditional: Tensor) -> list[Tensor]:
-        return self.encoder_block(input, h_conditional)
+    def encode(self, x: Tensor, hidden_y: Tensor) -> list[Tensor]:
+        return self.encoder_block(x, hidden_y)
 
-    def decode(
-        self, z: Tensor, h_conditional: Tensor, **kwargs
-    ) -> List[Tensor]:
-        return self.decoder_block(z, h_conditional)
+    def decode(self, z: Tensor, hidden_y: Tensor, **kwargs) -> List[Tensor]:
+        return self.decoder_block(z, hidden_y)
 
     def loss_function(
         self,
@@ -55,7 +66,7 @@ class CVAE(LightningModule):
         recons = []
 
         for i, (name, etype, lprobs) in enumerate(
-            zip(self.encoder_names, self.encoder_types, log_probs)
+            zip(self.embedding_names, self.embedding_types, log_probs)
         ):
             target = targets[:, i]
             if etype == "continuous":
@@ -93,24 +104,22 @@ class CVAE(LightningModule):
         return (eps * std) + mu
 
     def predict(self, z: Tensor, y: Tensor, **kwargs) -> List[Tensor]:
-        h_y = self.conditional_block(y)
+        h_y = self.labels_encoder_block(y)
         prob_samples = [
             torch.exp(probs) for probs in self.decode(z, h_y, **kwargs)
         ]
         return prob_samples, z
 
     def infer(self, x: Tensor, y: Tensor, **kwargs) -> Tensor:
-        h_y = self.conditional_block(y)
-        log_probs_x, _, _, z = self.forward(x, h_y, **kwargs)
+        log_probs_x, _, _, z = self.forward(x, y, **kwargs)
         prob_samples = torch.exp(log_probs_x)
         return prob_samples, z
 
     def training_step(self, batch, batch_idx):
         x, y = batch
-        h_y = self.conditional_block(y)
-        log_probs, mu, log_var, _ = self.forward(x, h_y)
+        log_probs, mu, log_var, _ = self.forward(x, y)
         train_losses = self.loss_function(
-            log_probs=log_probs, mu=mu, log_var=log_var, targets=batch
+            log_probs=log_probs, mu=mu, log_var=log_var, targets=x
         )
         self.log_dict(
             {key: val.item() for key, val in train_losses.items()},
@@ -120,10 +129,9 @@ class CVAE(LightningModule):
 
     def validation_step(self, batch, batch_idx, optimizer_idx=0):
         x, y = batch
-        h_y = self.conditional_block(y)
-        log_probs, mu, log_var, _ = self.forward(x, h_y)
+        log_probs, mu, log_var, _ = self.forward(x, y)
         loss = self.loss_function(
-            log_probs=log_probs, mu=mu, log_var=log_var, targets=batch
+            log_probs=log_probs, mu=mu, log_var=log_var, targets=x
         )
         self.log_dict(
             {f"val_{key}": val.item() for key, val in loss.items()},
@@ -146,5 +154,5 @@ class CVAE(LightningModule):
 
     def predict_step(self, batch):
         z, y = batch
-        h_y = self.conditional_block(y)
+        h_y = self.labels_encoder_block(y)
         return self.predict(z, h_y)

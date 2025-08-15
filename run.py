@@ -10,11 +10,11 @@ from pytorch_lightning.callbacks import (
 from pytorch_lightning.loggers import WandbLogger
 from torch import concat
 
-from mirror.dataloaders.loader import DataModule
+from mirror.dataloaders.loader import DataLoader
 from mirror.dataloaders.z_loader import build_latent_dataloader
 from mirror.encoders.table_encoder import TableEncoder
-from mirror.models.modules import Decoder, Encoder
 from mirror.models.vae import VAE
+from mirror.models.vae_components import Decoder, Encoder
 
 LOGDIR = Path("logs")
 SIZE = 10000
@@ -32,7 +32,7 @@ census = census.drop("resident_id_m", axis=1)
 census_encoder = TableEncoder(data=census, verbose=True)
 
 dataset = census_encoder.encode(data=census)
-dataloader = DataModule(
+dataloader = DataLoader(
     dataset=dataset,
     val_split=0.1,
     test_split=None,

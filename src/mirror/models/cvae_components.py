@@ -1,9 +1,10 @@
 from typing import Tuple
 
+from pytorch_lightning import LightningModule
 from torch import Tensor, nn, stack
 
 
-class ConditionalBlock(nn.Module):
+class LabelsEncoderBlock(LightningModule):
     def __init__(
         self,
         encoder_types: list,
@@ -32,7 +33,7 @@ class ConditionalBlock(nn.Module):
         return h
 
 
-class EncoderBlock(nn.Module):
+class CVAEEncoderBlock(nn.Module):
     def __init__(
         self,
         encoder_types: list,
@@ -46,16 +47,7 @@ class EncoderBlock(nn.Module):
     ):
         super().__init__()
         self.embed = Embedder(encoder_types, encoder_sizes, hidden_size)
-        self.ff1 = FFBlock(
-            hidden_size,
-            hidden_size,
-            depth,
-            hidden_size,
-            activation=activation,
-            normalize=normalize,
-            dropout=dropout,
-        )
-        self.ff2 = FFBlock(
+        self.ff = FFBlock(
             hidden_size,
             hidden_size,
             depth,
@@ -67,17 +59,16 @@ class EncoderBlock(nn.Module):
         self.fc_mu = nn.Linear(hidden_size, latent_size)
         self.fc_var = nn.Linear(hidden_size, latent_size)
 
-    def forward(
-        self, x: Tensor, h_conditional: Tensor
-    ) -> Tuple[Tensor, Tensor]:
+    def forward(self, x: Tensor, hidden_y: Tensor) -> Tuple[Tensor, Tensor]:
         h = self.embed(x)
-        h = self.ff1(h)
-        h = h + h_conditional
-        h = self.ff2(h)
-        return self.fc_mu(h), self.fc_var(h)
+        h = h + hidden_y
+        h = self.ff(h)
+        mu = self.fc_mu(h)
+        var = self.fc_var(h)
+        return mu, var
 
 
-class DecoderBlock(nn.Module):
+class CVAEDecoderBlock(nn.Module):
     def __init__(
         self,
         encoder_types: list,
@@ -90,7 +81,7 @@ class DecoderBlock(nn.Module):
         dropout: float = 0.0,
     ):
         super().__init__()
-        self.ff1 = FFBlock(
+        self.ff = FFBlock(
             latent_size,
             hidden_size,
             depth,
@@ -99,33 +90,23 @@ class DecoderBlock(nn.Module):
             normalize=normalize,
             dropout=dropout,
         )
-        self.ff2 = FFBlock(
-            hidden_size,
-            hidden_size,
-            depth,
-            hidden_size,
-            activation=activation,
-            normalize=normalize,
-            dropout=dropout,
-        )
-
-        self.embeds = []
+        embeds = []
         for type, size in zip(encoder_types, encoder_sizes):
             if type == "continuous":
-                self.embeds.append(
+                embeds.append(
                     nn.Sequential(nn.Linear(hidden_size, 1), nn.Sigmoid())
                 )
             if type == "categorical":
-                self.embeds.append(
+                embeds.append(
                     nn.Sequential(
                         nn.Linear(hidden_size, size), nn.LogSoftmax(dim=-1)
                     )
                 )
+        self.embeds = nn.ModuleList(embeds)
 
-    def forward(self, z: Tensor, h_conditional: Tensor) -> Tensor:
-        h = self.ff1(z)
-        h = h + h_conditional
-        h = self.ff2(h)
+    def forward(self, z: Tensor, hidden_y: Tensor) -> Tensor:
+        h = self.ff(z)
+        h = h + hidden_y
         xs = [embed(h) for embed in self.embeds]
         return xs
 
@@ -147,10 +128,12 @@ class Embedder(nn.Module):
         for i, (type, embed) in enumerate(zip(self.encoder_types, self.embeds)):
             col = x[:, i]
             if type == "categorical":
-                col = col.int()
+                # TODO: need to seperate x_cat and x_cont in future to remove if statement
+                col = col.long()
             xs.append(embed(col))
         # consider splitting categorical and continuous in future
-        return stack(xs, dim=-1).sum(dim=-1)
+        xs = stack(xs, dim=-1).sum(dim=-1)
+        return xs
 
 
 class Noop(nn.Module):
