@@ -39,6 +39,7 @@ dependencies = [
   "pytest-timeout",
   "pytest-xdist",
   "wandb>=0.21.1",
+  "polars>=1.32.3",
 ]
 
 [project.scripts]

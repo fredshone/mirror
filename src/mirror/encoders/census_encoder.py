@@ -54,6 +54,49 @@ class YXDataset(Dataset):
         return len(self.x)
 
 
+class ZDataset(Dataset):
+    def __init__(self, num_samples: int, latent_size: int):
+        self.z = torch.randn(num_samples, latent_size)
+
+    def __repr__(self):
+        return f"{super().__repr__()}: {self.z.shape}"
+
+    def __getitem__(self, index):
+        return self.z[index]
+
+    def __len__(self):
+        return len(self.z)
+
+
+class YZDataset(Dataset):
+    def __init__(self, z: Dataset, y: Dataset):
+        """Dataset for the latent variables and target labels.
+
+        Args:
+            z (Dataset): The latent variables.
+            y (Dataset): The target labels.
+
+        Raises:
+            TypeError: If y or z is not a Dataset.
+            ValueError: If y and z are not of the same length.
+        """
+        if not isinstance(y, Dataset) or not isinstance(z, Dataset):
+            raise TypeError("y and z must be instances of Dataset")
+        if not len(y) == len(z):
+            raise ValueError("y and z must be of the same length")
+        self.y = y
+        self.z = z
+
+    def __repr__(self):
+        return f"{super().__repr__()}: {self.z.data.shape}, {self.y.data.shape}"
+
+    def __getitem__(self, index):
+        return self.z[index], self.y[index]
+
+    def __len__(self):
+        return len(self.z)
+
+
 class TableEncoder:
     def __init__(
         self,

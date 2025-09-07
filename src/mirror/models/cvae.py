@@ -108,7 +108,7 @@ class CVAE(LightningModule):
         prob_samples = [
             torch.exp(probs) for probs in self.decode(z, h_y, **kwargs)
         ]
-        return prob_samples, z
+        return y, prob_samples, z
 
     def infer(self, x: Tensor, y: Tensor, **kwargs) -> Tensor:
         log_probs_x, _, _, z = self.forward(x, y, **kwargs)
@@ -140,6 +140,11 @@ class CVAE(LightningModule):
             on_epoch=True,
             prog_bar=True,
         )
+
+    def predict_step(self, batch, batch_idx, dataloader_idx=0):
+        z, y = batch
+        h_y = self.labels_encoder_block(y)
+        return self.predict(z, h_y)
 
     def get_scheduler(self, optimizer):
         scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
