@@ -70,7 +70,7 @@ class CVAE(LightningModule):
         ):
             target = targets[:, i]
             if etype == "continuous":
-                loss = nn.functional.mse_loss(lprobs, target)
+                loss = nn.functional.mse_loss(torch.exp(lprobs), target)
                 recons.append(loss)
                 verbose_metrics[f"recon_mse_{name}"] = loss
             elif etype == "categorical":
@@ -141,18 +141,11 @@ class CVAE(LightningModule):
             prog_bar=True,
         )
 
-    def get_scheduler(self, optimizer):
-        scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
-        return scheduler
-
     def configure_optimizers(self):
         optimizer = optim.Adam(self.parameters(), lr=self.lr, weight_decay=0.01)
-
-        scheduler = self.get_scheduler(optimizer)
-
+        scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.99)
         return [optimizer], [scheduler]
 
     def predict_step(self, batch):
         z, y = batch
-        h_y = self.labels_encoder_block(y)
-        return self.predict(z, h_y)
+        return self.predict(z, y)
