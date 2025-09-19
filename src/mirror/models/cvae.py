@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 import torch
 from pytorch_lightning import LightningModule
@@ -15,6 +15,7 @@ class CVAE(LightningModule):
         decoder_block: nn.Module,
         beta: float,
         lr: float,
+        embedding_weights: Optional[list] = None,
         verbose: bool = False,
     ):
         super().__init__()
@@ -26,6 +27,10 @@ class CVAE(LightningModule):
             )
         self.embedding_names = embedding_names
         self.embedding_types = embedding_types
+        if embedding_weights:
+            self.embedding_weights = embedding_weights
+        else:
+            self.embedding_weights = [None] * len(embedding_names)
 
         self.labels_encoder_block = labels_encoder_block
         self.encoder_block = encoder_block
@@ -38,6 +43,17 @@ class CVAE(LightningModule):
         self.save_hyperparameters(
             ignore=["labels_encoder_block", "encoder_block", "decoder_block"]
         )
+        criterion = []
+        for etype, weights in zip(self.embedding_types, self.embedding_weights):
+            if etype == "continuous":
+                criterion.append(nn.MSELoss())
+            # move weights to device
+            elif etype == "categorical":
+                criterion.append(nn.NLLLoss(weight=weights))
+            else:
+                raise ValueError(f"Unknown embedding type: {etype}")
+
+        self.criterion = nn.ModuleList(criterion)
 
     def forward(
         self, x: Tensor, y: Tensor, target=None, **kwargs
@@ -65,16 +81,16 @@ class CVAE(LightningModule):
         verbose_metrics = {}
         recons = []
 
-        for i, (name, etype, lprobs) in enumerate(
-            zip(self.embedding_names, self.embedding_types, log_probs)
+        for i, (name, etype, lprobs, criterion) in enumerate(
+            zip(self.embedding_names, self.embedding_types, log_probs, self.criterion)
         ):
             target = targets[:, i]
             if etype == "continuous":
-                loss = nn.functional.mse_loss(torch.exp(lprobs), target)
+                loss = criterion(torch.exp(lprobs), target)
                 recons.append(loss)
                 verbose_metrics[f"recon_mse_{name}"] = loss
             elif etype == "categorical":
-                loss = nn.functional.nll_loss(lprobs, target.long())
+                loss = criterion(lprobs, target.long())
                 recons.append(loss)
                 verbose_metrics[f"recon_nll_{name}"] = loss
             else:

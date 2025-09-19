@@ -1,7 +1,8 @@
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import pandas as pd
 import pandas.api.types as ptypes
+import polars as pl
 from torch import Tensor, stack
 from torch.utils.data import Dataset
 
@@ -26,20 +27,21 @@ class TableEncoder:
 
     def __init__(
         self,
-        data: pd.DataFrame,
+        data: Union[pl.DataFrame, pd.DataFrame],
         include: Optional[list] = None,
         exclude: Optional[list] = None,
         verbose: bool = False,
     ):
-        """Tokenise a pandas dataframe into a Tensor,
+        """Tokenise a dataframe into a Tensor,
         and initialise mapping for further encoding and decoding.
         Args:
-            data (pd.DataFrame): input dataframe to tokenise.
+            data (Union[pl.DataFrame, pd.DataFrame]): input dataframe to tokenise.
             include (list, optional): columns to include. Defaults to None.
             exclude (list, optional): columns to exclude. Defaults to None.
         """
+        
         self.verbose = verbose
-        columns = data.columns.tolist()
+        columns = data.columns
         columns = [col for col in columns if col not in ["pid", "iid", "hid"]]
         if include is not None:
             columns = [col for col in columns if col in include]
@@ -50,17 +52,59 @@ class TableEncoder:
             raise UserWarning("No columns found to encode in table.")
 
         self.columns = columns
-        self.configure(data, verbose=verbose)
 
-    def configure(self, data: pd.DataFrame, verbose: bool = False) -> None:
+        self.mode = type(data)
+        if isinstance(data, pd.DataFrame):
+            self.configure_pandas(data, verbose=verbose)
+        elif isinstance(data, pl.DataFrame):
+            self.configure_polars(data, verbose=verbose)
+        else:
+            raise ValueError("Data must be a pandas or polars dataframe")
+
+    def configure_polars(self, data: pl.DataFrame, verbose: bool = False) -> None:
         """Configure the tokeniser by encoding the dataframe columns.
         Args:
-            data (pd.DataFrame): input dataframe to configure.
+            data (pl.DataFrame): input dataframe to configure.
             verbose (bool, optional): print the configuration. Defaults to False.
         """
 
         self.encoders = {}
 
+        for column in self.columns:
+            if column not in data.columns:
+                raise UserWarning(f"Column '{column}' not found in attributes")
+            values = data[column]
+            dtype = values.dtype
+            if (
+                dtype == pl.Utf8
+                or dtype == pl.Object
+                or dtype == pl.Categorical
+                or dtype == pl.Boolean
+                or dtype == pl.Enum
+            ):
+                self.encoders[column] = CategoricalTokeniser(
+                    data[column], column, verbose=verbose
+                )
+            elif -8 in values or values.n_unique() < 25:
+                self.encoders[column] = CategoricalTokeniser(
+                    data[column], column, verbose=verbose
+                )
+            elif dtype in [pl.Int8, pl.Int16, pl.Int32, pl.Int64, pl.Float32, pl.Float64]:
+                self.encoders[column] = ContinuousEncoder(
+                    data[column], column, verbose=verbose
+                )
+            else:
+                raise UserWarning(
+                    f"Column '{column}' not supported for encoding: {values.dtype}"
+                )
+
+    def configure_pandas(self, data: pd.DataFrame, verbose: bool = False) -> None:
+        """Configure the tokeniser by encoding the dataframe columns.
+        Args:
+            data (pd.DataFrame): input dataframe to configure.
+            verbose (bool, optional): print the configuration. Defaults to False.
+        """
+        self.encoders = {}
         for column in self.columns:
             if column not in data.columns:
                 raise UserWarning(f"Column '{column}' not found in attributes")
@@ -86,10 +130,10 @@ class TableEncoder:
                     f"Column '{column}' not supported for encoding: {values.dtype}"
                 )
 
-    def encode(self, data: pd.DataFrame) -> Tensor:
+    def encode(self, data: Union[pl.DataFrame, pd.DataFrame]) -> Tensor:
         """Encode the dataframe into a Tensor.
         Args:
-            data (pd.DataFrame): input dataframe to encode.
+            data (Union[pl.DataFrame, pd.DataFrame]): input dataframe to encode.
         Returns:
             Tensor: encoded dataframe.
         """
@@ -104,7 +148,6 @@ class TableEncoder:
             raise UserWarning("No encodings found.")
 
         encoded = stack(encoded, dim=-1).float()
-        print(encoded.min(), encoded.max())
         dataset = CensusDataset(encoded)
         if self.verbose:
             print(f"{self} encoded -> {dataset}")
@@ -143,26 +186,34 @@ class TableEncoder:
             List[int]: list of sizes of the embeddings.
         """
         return [encoder.size for encoder in self.encoders.values()]
+    
+    def weights(self) -> List[List[Optional[float]]]:
+        """Get the weights of the embeddings.
+        Returns:
+            List[List[Optional[float]]]: list of weights of the embeddings.
+        """
+        return [encoder.get_weights() for encoder in self.encoders.values()]
 
-    def decode(self, data: List[Tensor]) -> pd.DataFrame:
+    def decode(self, data: List[Tensor]) -> Union[pd.DataFrame, pl.DataFrame]:
         """Decode Tensor of tokens back into dataframe.
 
         Args:
             data (List[Tensor]): input Tensor of tokens to decode.
 
         Returns:
-            pd.DataFrame: decoded dataframe.
+            Union[pd.DataFrame, pl.DataFrame]: decoded dataframe.
         """
         decoded = {"pid": list(range(data.shape[0]))}
         for i, (name, encoder) in enumerate(self.encoders.items()):
-            tokens = data[:, i].tolist()
+            tokens = data[:, i]
             decoded[name] = encoder.decode(tokens)
-        return pd.DataFrame(decoded)
+        decoded = pd.DataFrame(decoded) if self.mode == pd.DataFrame else pl.DataFrame(decoded)
+        return decoded
 
-    def argmax_decode(self, data: List[Tensor]) -> pd.DataFrame:
+    def argmax_decode(self, data: List[Tensor]) -> Union[pd.DataFrame, pl.DataFrame]:
         argmaxed = [d.argmax(dim=-1) for d in data]
         return self.decode(argmaxed)
 
-    def multinomial_decode(self, data: List[Tensor]) -> pd.DataFrame:
+    def multinomial_decode(self, data: List[Tensor]) -> Union[pd.DataFrame, pl.DataFrame]:
         sampled = [d.multinomial(1).squeeze() for d in data]
         return self.decode(sampled)

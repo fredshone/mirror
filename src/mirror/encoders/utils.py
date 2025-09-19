@@ -1,17 +1,18 @@
-from typing import Optional
+from typing import Optional, Union
 
 import pandas as pd
+import polars as pl
 from torch import Tensor
 
 
-def tokenize(data: pd.Series, encoding_map: Optional[dict] = None) -> Tensor:
+def tokenize(data: Union[pd.Series, pl.Series], encoding_map: Optional[dict] = None) -> Tensor:
     """
-    Tokenize a pandas Series into a Tensor. If no encoding map is provided,
+    Tokenize a Series into a Tensor. If no encoding map is provided,
     a new encoding map will be created. If an encoding map is provided,
     the function will check if the data matches the existing encoding.
     If not, a UserWarning will be raised.
     Args:
-        data (pd.Series): input Series to tokenize.
+        data (Union[pd.Series, pl.Series]): input Series to tokenize.
         encoding_map (dict, optional): existing encodings to use. Defaults to None.
     Returns:
         Tensor: Tensor of encodings and encoding map.
@@ -27,9 +28,10 @@ def tokenize(data: pd.Series, encoding_map: Optional[dict] = None) -> Tensor:
                 Your existing encodings are: {encoding_map}.
 """
             )
-        encoded = pd.Categorical(data, categories=encoding_map.keys())
+        encoded = data.replace(encoding_map).cast(pl.Int8)
     else:
-        encoded = pd.Categorical(data)
-        encoding_map = {e: i for i, e in enumerate(encoded.categories)}
-    encoded = Tensor(encoded.codes.copy()).int()
+        cats = list(data.unique().sort())
+        encoding_map = {v: i for i, v in enumerate(cats)}
+        encoded = data.replace(encoding_map).cast(pl.Int8)
+    encoded = Tensor(encoded.to_numpy()).int()
     return encoded, encoding_map
