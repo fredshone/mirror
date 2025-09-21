@@ -1,0 +1,71 @@
+seed: 1234
+log_path: logs/
+
+data:
+  train_path: data/census.csv
+  gen_path: data/census.csv
+  columns: {
+    resident_id_m: pid,
+    approx_social_grade: social,
+    country_of_birth_3a: country_of_birth,
+    economic_activity_status_10m: employment_status,
+    ethnic_group_tb_6a: ethnicity,
+    health_in_general: health,
+    hh_families_type_6a: household_type,
+    hours_per_week_worked: hours_worked,
+    in_full_time_education: full_time_student,
+    industry_10a: industry,
+    iol22cd: io_london,
+    legal_partnership_status_6a: marital_status,
+    occupation_10a: occupation,
+    region: region,
+    religion_tb: religion,
+    residence_type: residence_type,
+    resident_age_7d: age_group,
+    sex: sex,
+    usual_short_student: residency_type,
+  }
+  controls: {
+    sex,
+    age_group,
+    region,
+  }
+
+dataloader:
+  val_split: 0.1
+  test_split: None
+  train_batch_size: int = 1024
+  val_batch_size: int = 1024
+  test_batch_size: int = 1024
+  gen_batch_size: int = 1024
+  num_workers: int = 4
+  pin_memory: bool = False
+
+model:
+  beta: float = 0.1
+  lr: float = 1e-3
+  latent_size: int = 64
+  target_encoder:
+    depth: int = 2
+    size: int = 128
+    dropout: float = 0.0
+  encoder:
+    depth: int = 2
+    size: int = 128
+    dropout: float = 0.0
+  decoder:
+    depth: int = 2
+    size: int = 128
+    dropout: float = 0.0
+
+trainer:
+  min_epochs: int = 1
+  max_epochs: int = 3
+  patience: int = 10
+  check_val_every_n_epoch: int = 1
+
+evaluate:
+  include: None
+  exclude: None
+  orders: [1,2,3]
+
