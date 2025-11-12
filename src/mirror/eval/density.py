@@ -1,7 +1,19 @@
 from itertools import combinations
-from typing import Iterator, Tuple, Callable, Optional
+from typing import Iterator, Tuple
 
 import polars as pl
+
+
+def mean_mean_absolute_error(
+    target: pl.DataFrame, synthetic: pl.DataFrame, order = 1) -> float:
+    """Compute the Mean Mean Absolute Error (MMAE) between target and synthetic DataFrames.
+    """
+    maes = []
+    for _, _, x, xhat in iter_joint_probs(target, synthetic, order=order):
+        mae = calc_mae(x, xhat)
+        maes.append(mae)
+    mmae = sum(maes) / len(maes)
+    return mmae
 
 
 def frequencies(df: pl.DataFrame, cols: list[str], alias: str) -> pl.DataFrame:
@@ -21,7 +33,7 @@ def frequencies(df: pl.DataFrame, cols: list[str], alias: str) -> pl.DataFrame:
     return frequencies
 
 
-def compute_joint_frequencies(
+def iter_joint_probs(
     target, synthetic, order=2
 ) -> Iterator[Tuple[str, pl.DataFrame, pl.DataFrame]]:
     """Compute joint frequencies for combinations of columns in two DataFrames.
@@ -35,13 +47,20 @@ def compute_joint_frequencies(
         tuple: A tuple containing the name of the combination, the target frequencies,
                and the synthetic frequencies.
     """
-    assert set(target.columns) == set(synthetic.columns)
+    if not set(target.columns) == set(synthetic.columns):
+        xor = set(target.columns).symmetric_difference(set(synthetic.columns))
+        print(f"Column mismatch: {xor}")
+        raise ValueError("Target and synthetic DataFrames must have the same columns.")
     for cols in combinations(target.columns, order):
         name = "_".join(cols)
+        target_freq = frequencies(target, list(cols), "target")
+        synthetic_freq = frequencies(synthetic, list(cols), "synthetic")
+        joined = join_probs(target_freq, synthetic_freq)
         yield (
             name,
-            frequencies(target, list(cols), "target"),
-            frequencies(synthetic, list(cols), "synthetic"),
+            joined["index"],
+            joined["target"],
+            joined["synthetic"],
         )
 
 
@@ -58,8 +77,8 @@ def join_probs(target: pl.DataFrame, synthetic: pl.DataFrame) -> pl.DataFrame:
     joined = target.join(
         synthetic, on="index", how="full", coalesce=True
     ).fill_null(0)
-    assert joined["target"].sum() == joined["synthetic"].sum()
     joined = joined.select(
+        pl.col("index"),
         pl.col("target") / pl.sum("target"),
         pl.col("synthetic") / pl.sum("synthetic"),
     )
@@ -70,31 +89,20 @@ def absolute_errors(target: pl.Series, synthetic: pl.Series) -> pl.Series:
     return (target - synthetic).abs()
 
 
-def calc_mae(joined: pl.DataFrame) -> float:
-    return (joined["target"] - joined["synthetic"]).abs().mean()
+def calc_mae(target: pl.Series, synthetic: pl.Series) -> float:
+    return (target - synthetic).abs().mean()
 
 
-def calc_mnae(joined: pl.DataFrame) -> float:
-    abs = (joined["target"] - joined["synthetic"]).abs()
-    sum = joined["target"] + joined["synthetic"]
+def calc_mnae(target: pl.Series, synthetic: pl.Series) -> float:
+    abs = (target - synthetic).abs()
+    sum = target + synthetic
     return (abs / sum).mean()
 
 
-# def evaluate_density(
-#         target: pl.DataFrame,
-#         synthetic: pl.DataFrame,
-#         order: int = 1,
-#         metric: Optional[Callable[[pl.DataFrame], float]] = None
-# )
-
-
-# results = {}
-# for order in range(1, 2):
-#     print(f"Order {order}:")
-#     maes = {}
-#     for name, target, synthetic in compute_joint_frequencies(
-#         census, df, order=order
-#     ):
-#         join = join_probs(target, synthetic)
-#         maes[name] = calc_mae(join)
-#     results[order] = maes
+def calc_cross_entropy(
+    target: pl.Series, synthetic: pl.Series, epsilon: float = 1e-10
+) -> float:
+    synthetic = synthetic + epsilon
+    log_synthetic = synthetic.log()
+    cross_entropy = -(target * log_synthetic).sum()
+    return cross_entropy

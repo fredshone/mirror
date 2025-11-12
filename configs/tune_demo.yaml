@@ -1,8 +1,8 @@
 seed: 1234
 
 logging:
-  dir: "logs/TRB"
-  name: "cvae"
+  dir: "logs"
+  name: "tune_demo"
 
 tune:
   trials: 5
@@ -39,37 +39,39 @@ data:
 datamodule:
   val_split: 0.1
   test_split: 0.1
-  train_batch_size: int = 1024
-  val_batch_size: int = 1024
-  test_batch_size: int = 1024
-  gen_batch_size: int = 1024
-  num_workers: int = 4
-  pin_memory: bool = False
+  train_batch_size: 1024
+  val_batch_size: 1024
+  test_batch_size: 1024
+  gen_batch_size: 1024
+  num_workers: 4
+  pin_memory: False
 
 gen_dataloader:
-  batch_size: int = 1024
-  num_workers: int = 4
-  pin_memory: bool = False
+  batch_size: 1024
+  num_workers: 4
+  pin_memory: False
 
 model:
-  latent_size: int = 12
-  beta: float = 0.1
-  lr: float = 0.001
+  latent_size: trial.suggest_int("latent_size", 2, 24)
+  beta: 0.1
+  lr: 0.001
   controls_encoder:
-    depth: int = 2
-    hidden_size: int = 32
+    depth: 2
+    hidden_size: 32
   encoder:
-    depth: int = 2
-    hidden_size: int = 32
+    depth: 2
+    hidden_size: 32
   decoder:
-    depth: int = 2
-    hidden_size: int = 32
+    depth: 2
+    hidden_size: 32
+
+early_stopping:
+  patience: 10
 
 trainer:
-  min_epochs: int = 1
-  max_epochs: int = 3
-  patience: int = 10
-  check_val_every_n_epoch: int = 1
+  min_epochs: 1
+  max_epochs: 3
+  check_val_every_n_epoch: 1
 
 evaluate:
   include: None
