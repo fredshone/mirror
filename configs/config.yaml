@@ -1,12 +1,9 @@
 seed: 1234
 
 logging:
-  dir: "logs/TRB"
-  name: "cvae"
-
-tune:
-  trials: 5
-  timeout: 100  # seconds
+  save_dir: "logs"
+  project: "run_demo"
+  name: "demo"
 
 data:
   train_path: data/census.csv
@@ -38,38 +35,40 @@ data:
 
 datamodule:
   val_split: 0.1
-  test_split: 0.1
-  train_batch_size: int = 1024
-  val_batch_size: int = 1024
-  test_batch_size: int = 1024
-  gen_batch_size: int = 1024
-  num_workers: int = 4
-  pin_memory: bool = False
+  test_split: 0.0
+  train_batch_size: 1024
+  val_batch_size: 1024
+  test_batch_size: 1024
+  gen_batch_size: 1024
+  num_workers: 4
+  pin_memory: True
 
 gen_dataloader:
-  batch_size: int = 1024
-  num_workers: int = 4
-  pin_memory: bool = False
+  batch_size: 1024
+  num_workers: 4
+  pin_memory: True
 
 model:
-  latent_size: int = 12
-  beta: float = 0.1
-  lr: float = 0.001
+  latent_size: 20
+  beta: 1
+  lr: 0.1
   controls_encoder:
-    depth: int = 2
-    hidden_size: int = 32
+    depth: 4
+    hidden_size: 64
   encoder:
-    depth: int = 2
-    hidden_size: int = 32
+    depth: 4
+    hidden_size: 64
   decoder:
-    depth: int = 2
-    hidden_size: int = 32
+    depth: 4
+    hidden_size: 64
 
 trainer:
-  min_epochs: int = 1
-  max_epochs: int = 3
-  patience: int = 10
-  check_val_every_n_epoch: int = 1
+  min_epochs: 5
+  max_epochs: 100
+  check_val_every_n_epoch: 1
+
+early_stopping:
+  patience: 10
 
 evaluate:
   include: None

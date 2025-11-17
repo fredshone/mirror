@@ -1,10 +1,9 @@
 from typing import Tuple
 
-from pytorch_lightning import LightningModule
 from torch import Tensor, nn, stack
 
 
-class LabelsEncoderBlock(LightningModule):
+class LabelsEncoderBlock(nn.Module):
     def __init__(
         self,
         encoder_types: list,
@@ -116,23 +115,26 @@ class Embedder(nn.Module):
         super().__init__()
         self.encoder_types = encoder_types
         embeds = []
-        for type, size in zip(encoder_types, encoder_sizes):
-            if type == "continuous":
+
+        for encoding_type, size in zip(encoder_types, encoder_sizes):
+            if encoding_type == "continuous":
                 embeds.append(NumericEmbed(embed_size))
-            if type == "categorical":
+            if encoding_type == "categorical":
                 embeds.append(nn.Embedding(size, embed_size))
         self.embeds = nn.ModuleList(embeds)
 
     def forward(self, x: Tensor) -> Tensor:
+        # TODO: need to remove if statements and loop for speed
         xs = []
-        for i, (type, embed) in enumerate(zip(self.encoder_types, self.embeds)):
+        for i, (embed_type, embed) in enumerate(zip(self.encoder_types, self.embeds)):
             col = x[:, i]
-            if type == "categorical":
-                # TODO: need to seperate x_cat and x_cont in future to remove if statement
+            if embed_type == "categorical":
+                # TODO: need to separate x_cat and x_cont in future to remove if statement
                 col = col.long()
             xs.append(embed(col))
         # consider splitting categorical and continuous in future
-        xs = stack(xs, dim=-1).sum(dim=-1)
+        xs = stack(xs, dim=-1)
+        xs = xs.sum(dim=-1)
         return xs
 
 

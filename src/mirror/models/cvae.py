@@ -36,7 +36,6 @@ class CVAE(LightningModule):
         self.encoder_block = encoder_block
         self.decoder_block = decoder_block
 
-        assert beta <= 1
         self.beta = beta
         self.lr = lr
         self.verbose = verbose

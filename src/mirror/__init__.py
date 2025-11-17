@@ -18,3 +18,7 @@ def cuda_available():
 def current_device():
     """Get current device."""
     return torch.cuda.current_device() if cuda_available() else "cpu"
+
+
+if cuda_available():
+    torch.set_float32_matmul_precision("medium")

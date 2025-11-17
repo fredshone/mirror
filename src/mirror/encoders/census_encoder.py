@@ -25,7 +25,7 @@ class XDataset(Dataset):
         return len(self.data)
 
 
-class YXDataset(Dataset):
+class XYDataset(Dataset):
     def __init__(self, x: Dataset, y: Dataset):
         """Dataset for the input features and target labels.
 

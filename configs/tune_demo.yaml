@@ -5,8 +5,8 @@ logging:
   name: "tune_demo"
 
 tune:
-  trials: 5
-  timeout: 100  # seconds
+  trials: 500
+  timeout: 3600  # seconds
 
 data:
   train_path: data/census.csv
@@ -52,25 +52,25 @@ gen_dataloader:
   pin_memory: False
 
 model:
-  latent_size: trial.suggest_int("latent_size", 2, 24)
-  beta: 0.1
-  lr: 0.001
+  latent_size: trial.suggest_int("latent_size", 2, 24, step=2)
+  beta: trial.suggest_float("beta", 0.1, 1, step=0.1)
+  lr: trial.suggest_float("lr", 0.0001, 1, log=True)
   controls_encoder:
-    depth: 2
-    hidden_size: 32
+    depth: trial.suggest_int("depth", 1, 4)
+    hidden_size: trial.suggest_categorical("hidden_size", [16, 32, 64, 128])
   encoder:
-    depth: 2
-    hidden_size: 32
+    depth: trial.suggest_int("depth", 1, 4)
+    hidden_size: trial.suggest_categorical("hidden_size", [16, 32, 64, 128])
   decoder:
-    depth: 2
-    hidden_size: 32
+    depth: trial.suggest_int("depth", 1, 4)
+    hidden_size: trial.suggest_categorical("hidden_size", [16, 32, 64, 128])
 
 early_stopping:
-  patience: 10
+  patience: 2
 
 trainer:
-  min_epochs: 1
-  max_epochs: 3
+  min_epochs: 5
+  max_epochs: 100
   check_val_every_n_epoch: 1
 
 evaluate:
